@@ -1,0 +1,628 @@
+/// NOTE: methods that start with handlers.(methodName) are methods accessible from the client.
+/// All other methods are for the SERVER only!!! Do not change these lightly.
+/// This file is clearly enormous. I've tried my best to "extract till I drop" and comment everything.
+/// Because there are server API limits (10 per call), a lot of methods require the data structures from
+/// the API calls to be passed in, so I don't wind up hitting the API a massive number of times.
+
+/////////////////////////////////////////////////
+/// Constants
+/// Constants used in methods throughout the
+/// cloud script.
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+/// ~Constants
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+/// Generic Testing
+/// These methods should all check that the
+/// account is a testing account with isTesting().
+/// These methods exist to edit save data and
+/// currency in preperation for running very
+/// specific integration tests.
+/////////////////////////////////////////////////
+
+/// Checks to see if the account is marked for testing.
+function isTesting() {
+    var internalData = server.GetUserInternalData({ PlayFabId: currentPlayerId, Keys: ["Testing"] });    
+    var data = internalData[DATA];    
+    var isTesting = false;
+
+    if (data.hasOwnProperty("Testing")) {
+        var value = data["Testing"];
+        isTesting = value[VALUE] == "true";
+    }
+    
+    log.info("Account Test Status: " + isTesting);
+
+    return isTesting;
+}
+
+/// Test for purposefully going over the cloudscript limit to see what happens
+handlers.overLimit = function (args) {
+    if (!isTesting()) {
+         return { outOfSync : true };;    
+    }
+
+    var one = isTesting();
+    var two = isTesting();
+    var three = isTesting();
+    var four = isTesting();
+    var five = isTesting();
+    var six = isTesting();
+    var seven = isTesting();
+    var eight = isTesting();
+    var nine = isTesting();
+    var ten = isTesting();
+    var eleven = isTesting();
+    var twelve = isTesting();
+}
+
+/// for getting at internal data
+handlers.getInternalData = function(args) {
+    if (!isTesting()) {
+        return returnOutOfSync();    
+    }
+
+    var key = args.data[SAVE_KEY];
+    var value = GetInternalSaveData(key);   
+    
+    return ReturnDataToClient(value);
+}
+
+/// for getting read only data
+handlers.getReadOnlyData = function(args) {
+    if (!isTesting()) {
+        return returnOutOfSync();    
+    }
+
+    var key = args.data[SAVE_KEY];
+    var value = GetReadOnlySaveData(key); 
+    
+    return ReturnDataToClient(value);
+}
+
+/// sets player data of a key to a value
+handlers.setSaveData = function(args) {
+    if (!isTesting()) {
+        return returnOutOfSync();
+    }
+
+    var key = args.data["Key"];
+    var value = args.data[VALUE];
+    var access = args.data[DATA_ACCESS];
+
+    SetSaveData(key, value, access);
+}
+
+/// convenience function that turns some raw data into a json string to send back to client
+function ReturnDataToClient(rawData) {
+    if (!isTesting()) {
+        return returnOutOfSync();    
+    }
+
+    var dataToString = JSON.stringify(rawData);
+    log.info("Returning test data to client: " + dataToString);
+
+    var data = { data : dataToString }
+    return data;
+}
+
+/// sets a type of the player's currency to a value.
+/// this has to be done by adding or subtracting the difference of
+/// the incoming value depending on the player's current currency,
+/// because there is no API call to set a currency to a specific value.
+handlers.setPlayerCurrency = function(args) {
+    if (!isTesting()) {
+        return returnOutOfSync();
+    }    
+
+    var amountToSet = args.data["Amount"];
+    var currencyType = args.data["Type"];
+
+    SetCurrency(currencyType, amountToSet);
+}
+
+handlers.getPlayerCurrency = function(args) {
+        if (!isTesting()) {
+        return returnOutOfSync();
+    }
+
+    var currencyType = args.data["Type"];
+    var playerInventory = GetPlayerInventory();   
+
+    var amount = GetAmountOfCurrency(playerInventory, currencyType);
+
+    return ReturnDataToClient(amount);
+}
+
+/// for tests where the players save data needs to be wiped
+handlers.deleteAllPlayerReadOnlyData = function(args) {
+    if (!isTesting()) {
+        return returnOutOfSync();
+    }    
+
+    WipePlayerData();
+}
+
+/// for testing adding missing player data
+handlers.addMissingPlayerData = function(args) {
+    if (!isTesting()) {
+        return returnOutOfSync();
+    }
+
+    AddMissingPlayerData();    
+}
+
+handlers.getAllPlayerReadOnlySaveData = function(args) {
+    if (!isTesting()) {
+        return returnOutOfSync();
+    }
+
+    var allSaveData = GetAllReadOnlySaveData();
+
+    return ReturnDataToClient(allSaveData);
+}
+
+handlers.getTitleData = function(args) {
+    if (!isTesting()) {
+        return returnOutOfSync();
+    }
+
+    var key = args.data[SAVE_KEY];
+    var titleData= GetTitleData(key);
+
+    return ReturnDataToClient(titleData);
+}
+
+handlers.getGameMetric = function(args) {
+    if (!isTesting()) {
+        return returnOutOfSync();
+    }
+
+    var metricName = args.data[KEY];
+
+    return ReturnDataToClient(GetGameMetric(metricName));
+}
+
+/////////////////////////////////////////////////
+/// ~Generic Testing
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+/// Number Restriction
+/////////////////////////////////////////////////
+
+function DoesPassNumberRestriction(restriction, value) {
+    var min = restriction[MIN];
+    var max = restriction[MAX];
+
+    var passes = value >= min && value <= max;
+
+    return passes;
+}
+
+
+/////////////////////////////////////////////////
+/// ~Number Restriction
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+/// Metrics
+/////////////////////////////////////////////////
+
+function IncrementGameMetric(metricName) {
+    var metricsData = GetReadOnlySaveData(GAME_METRICS);
+    var allMetrics = metricsData[METRICS];
+
+    if (allMetrics.hasOwnProperty(metricName)) {
+        allMetrics[metricName] += 1;
+    } else {
+        allMetrics[metricName] = 1;
+    }
+
+    SetReadOnlyData(GAME_METRICS, metricsData);
+}
+
+function GetGameMetric(metricName) {
+    var metricsData = GetReadOnlySaveData(GAME_METRICS);
+    var allMetrics = metricsData[METRICS];
+
+    if (allMetrics != null && allMetrics.hasOwnProperty(metricName)) {
+        return allMetrics[metricName];
+    } else {
+        return 0;
+    }
+}
+
+/////////////////////////////////////////////////
+/// ~Metrics
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+/// Login
+/////////////////////////////////////////////////
+
+handlers.onLogin = function (args) {
+    //AddMissingPlayerData(); 
+    //SetLoggedInTime();
+}
+
+/// we use the logged in time to help verify the player's actions
+function SetLoggedInTime() {
+    var time = Date.now();
+    SetSaveData(LOGGED_IN_TIME, time.toString(), INTERNAL);
+}
+
+/// This method looks through all the player's data and makes sure that the default values get added
+/// if there were no values there.
+function AddMissingPlayerData() {
+    var baseMapSaveKey = MAP_SAVE_KEY + MODULE_BASE;
+    var saveKeysToCheck = [baseMapSaveKey, GetProgressKey(CLASS_BUILDING), GetProgressKey(CLASS_GUILD), GetProgressKey(CLASS_UNIT), TRAINER_SAVE_DATA, GAME_METRICS, REPEATABLE_QUEST_PROGRESS];
+    var allSaveData = GetMultipleReadOnlySaveData(saveKeysToCheck);
+
+    if (WipePlayerDataIfIntroTutorialIncomplete(allSaveData)) {
+        allSaveData = GetMultipleReadOnlySaveData(saveKeysToCheck);
+    }
+
+    var arraySaveKeys = [CLASS_BUILDING, CLASS_GUILD, CLASS_UNIT];
+    var titleData = GetMultipleTitleData(arraySaveKeys); // iterate through this structure in the method and parse everything
+
+    AddMissingSaveData(allSaveData, arraySaveKeys, titleData);
+    StringifySaveData(allSaveData);
+    SetSaveDataWithObject(allSaveData, READ_ONLY);
+}
+
+function WipePlayerDataIfIntroTutorialIncomplete(allSaveData) {
+    if (allSaveData.hasOwnProperty(GAME_METRICS)) {
+        var introTutorialMetric = GetGameMetric(TUTORIAL_INTRO);
+        if (introTutorialMetric == 0) {
+            log.info("Intro tutorial incomplete, wiping player data.");
+            WipePlayerData();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function AddMissingSaveData(allSaveData, arraySaveKeys, titleData) {
+    AddMissingSaveObjects(arraySaveKeys, allSaveData);
+
+    AddRepeatableQuestProgress_IfMissing(allSaveData);
+    AddBuildingProgress_IfMissing(allSaveData[GetProgressKey(CLASS_BUILDING)], titleData[CLASS_BUILDING]);
+    AddGuildProgress_IfMissing(allSaveData[GetProgressKey(CLASS_GUILD)], titleData[CLASS_GUILD]);
+    AddTrainerProgress_IfMissing(allSaveData);
+    AddGameMetrics_IfMissing(allSaveData);
+    AddUnitProgress_IfMissing(allSaveData[GetProgressKey(CLASS_UNIT)], titleData[CLASS_UNIT]);
+    AddWorldProgress_IfMissing(allSaveData);
+
+    // because I don't want to make another call to get data, I am going to put *very first* stuff in here
+    AddNewPlayerData_IfMissing(allSaveData);
+}
+
+/// This method will add any save data keys as empty objects
+function AddMissingSaveObjects(arrayDataKeys, allSaveData) {
+    for (var index in arrayDataKeys) {
+        var saveKey = GetProgressKey(arrayDataKeys[index]);        
+        
+        if(!allSaveData.hasOwnProperty(saveKey)) {
+            allSaveData[saveKey] = {};
+        }
+    }    
+}
+
+/// In order to be saved, our hash of objects must be a hash of strings
+function StringifySaveData(allSaveData) {
+    for (var data in allSaveData) {
+        var saveObject = allSaveData[data];
+        var saveData = JSON.stringify(saveObject);
+        allSaveData[data] = saveData;
+    }
+}
+
+function AddGameMetrics_IfMissing(allSaveData) {
+    if (!allSaveData.hasOwnProperty(GAME_METRICS)) {
+        allSaveData[GAME_METRICS] = {};        
+    }
+
+    var metricsSaveData = allSaveData[GAME_METRICS];
+    if (!metricsSaveData.hasOwnProperty(METRICS)) {
+        var metrics = {};
+        metricsSaveData[METRICS] = metrics;
+    }
+}
+
+/// This sets the player's first ever map, if they have no map for the base module
+// because I don't want to make another call to get data, I am going to put *very first* stuff in here
+function AddNewPlayerData_IfMissing(allSaveData) {    
+    var baseMapKey = GetMapSaveKey(MODULE_BASE);
+
+    // the || here is because I can't figure out a way to fully wipe a piece of player save data
+    if (!allSaveData.hasOwnProperty(baseMapKey) || !allSaveData[baseMapKey].hasOwnProperty(WORLD)) {
+        var firstMapData = GetTitleData(NEW_PLAYER_MAP);
+        allSaveData[baseMapKey] = firstMapData;
+
+        var isFirstMap = true;
+        CreateMissionProgressForMap(firstMapData, isFirstMap);
+
+        ResetCurrency();
+    }
+}
+
+/////////////////////////////////////////////////
+/// ~Login
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+/// Client data accessing
+/// Methods the client can call to access data
+/// that it can't normally access or change.
+/////////////////////////////////////////////////
+
+/// This method used to be a lot more complex, getting multiple title datas for each expansion
+function GetTitleDataForClass(className) {
+    return GetTitleData(className);
+}
+
+/////////////////////////////////////////////////
+/// ~Client data accessing
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+/// Player data access
+/// All calls related to getting or setting
+/// generic player data.
+/////////////////////////////////////////////////
+
+const READ_ONLY = "ReadOnly";
+const INTERNAL = "Internal";
+
+function GetReadOnlySaveData(key) {
+    var rawData = server.GetUserReadOnlyData({ PlayFabId: currentPlayerId, Keys: [key] });
+
+    return GetSaveObjectFromRawData(rawData, key); 
+}
+
+function GetMultipleReadOnlySaveData(keys) {
+    var saveDataObject = server.GetUserReadOnlyData({ PlayFabId: currentPlayerId, Keys: keys });
+    var allSaveData = saveDataObject[DATA];
+
+    /// Iterate through all the save data in the save data object gotten from the server.
+    /// It re-inserts the object's VALUE (the actual data) into the object. This is necessary because
+    /// when we re-save the object, this is the format the API wants it in.
+    for (var data in allSaveData) {        
+        var saveObject = allSaveData[data];
+        var saveData = saveObject[VALUE];
+        
+        allSaveData[data] = JSON.parse(saveData);
+    }
+
+    return allSaveData;    
+}
+
+function GetAllReadOnlySaveData() {
+    var saveDataObject = server.GetUserReadOnlyData({ PlayFabId: currentPlayerId });
+    var allSaveData = saveDataObject[DATA];
+
+    /// Iterate through all the save data in the save data object gotten from the server.
+    /// It re-inserts the object's VALUE (the actual data) into the object. This is necessary because
+    /// when we re-save the object, this is the format the API wants it in.
+    for (var data in allSaveData) {
+        var saveObject = allSaveData[data];
+        var saveData = saveObject[VALUE];
+        allSaveData[data] = JSON.parse(saveData);
+    }
+
+    return allSaveData;
+}
+
+function GetInternalSaveData(key) {
+    var rawData = server.GetUserInternalData({ PlayFabId: currentPlayerId, Keys: [key] });
+    
+    return GetSaveObjectFromRawData(rawData, key);   
+}
+
+function GetSaveObjectFromRawData(rawData, key) {
+    var actualData = rawData[DATA];
+    var data = actualData[key];
+    var valueData = JSON.parse(data[VALUE]);
+
+    //log.info("Got save data: " + data[VALUE]);
+
+    return valueData; 
+}
+
+function SetReadOnlyData(dataKey, dataAsObject) {
+    SetSaveData(dataKey, JSON.stringify(dataAsObject), READ_ONLY);    
+}
+
+function SetInternalData(dataKey, dataAsObject) {
+    SetSaveData(dataKey, JSON.stringify(dataAsObject), INTERNAL); 
+}
+
+function SetSaveData(dataKey, dataAsString, dataType) {
+    var data = {};
+    data[dataKey] = dataAsString;
+    log.info("Saving " + dataType + " data for key " + dataKey + ": " + dataAsString);
+
+    SetSaveDataWithObject(data, dataType);
+}
+
+function SetSaveDataWithObject(dataObject, dataType) {
+    //log.info("Setting save data of " + dataType + ": " + JSON.stringify(dataObject));
+
+    if (dataType == READ_ONLY) {
+        server.UpdateUserReadOnlyData({ PlayFabId: currentPlayerId, Data: dataObject, Permission: "Public"});
+    } else if (dataType == INTERNAL) {
+        server.UpdateUserInternalData({ PlayFabId: currentPlayerId, Data: dataObject, Permission: "Public"});
+    } else {
+        log.info("Can't save to data type: " + dataType);
+    }
+}
+
+/////////////////////////////////////////////////
+/// ~Player data access
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+/// Currency
+/////////////////////////////////////////////////
+
+function AddCurrency(currencyType, amount) {
+    server.AddUserVirtualCurrency({ PlayFabId: currentPlayerId, VirtualCurrency: currencyType, Amount: amount });
+}
+
+function SubtractCurrency(currencyType, amount) {
+    server.SubtractUserVirtualCurrency({ PlayFabId: currentPlayerId, VirtualCurrency: currencyType, Amount: amount });
+}
+
+function SetCurrency(currencyType, amountToSet) {
+    var playerInventory = GetPlayerInventory();    
+    var currentAmount = GetAmountOfCurrency(playerInventory, currencyType);
+    var changeInCurrency = currentAmount - amountToSet;    
+
+    log.info("Setting player currency(" + currencyType + ") to " + amountToSet);
+
+    if (changeInCurrency > 0) {
+        SubtractCurrency(currencyType, changeInCurrency);        
+    } else if (changeInCurrency < 0) {
+        AddCurrency(currencyType, Math.abs(changeInCurrency));        
+    }
+}
+
+function HasEnoughCurrency(playerCurrencies, currencyType, amount) {    
+    var currentCurrency = playerCurrencies[currencyType];    
+    log.info("Looking for has enough " + amount + " and " + currentCurrency);
+    return currentCurrency >= amount;
+}
+
+function GetAmountOfCurrency(playerInventory, currencyType) {
+    var playerCurrencies = playerInventory[VIRTUAL_CURRENCY];
+    return playerCurrencies[currencyType];
+}
+
+function GetPlayerCurrenciesFromInventory(playerInventory) {    
+    var playerCurrencies = playerInventory[VIRTUAL_CURRENCY];
+
+    return playerCurrencies;
+}
+
+function ResetCurrency() {
+    SetCurrency( CURRENCY_GOLD, STARTING_GOLD );
+}
+
+/////////////////////////////////////////////////
+/// ~Currency
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+/// Misc
+/// Misc methods that are used by many different
+/// server methods.
+/////////////////////////////////////////////////
+
+function returnOutOfSync() {
+    return { outOfSync : true };
+}
+
+function WipePlayerData() {
+    var emptyData = {};    
+    emptyData[GAME_METRICS] = "{}";
+
+    SetSaveDataWithObject(emptyData, READ_ONLY);
+
+    SetCurrency(CURRENCY_GOLD, 0);
+}
+
+function GetRandomArrayElement(array) {
+    var randomElement = array[Math.floor(Math.random() * array.length)];
+    return randomElement;
+}
+
+function ShuffleArray(array) {
+    var j, x, i;
+    for (var i = array.length; i; i--) {
+        j = Math.floor(Math.random() * i);
+        x = array[i - 1];
+        array[i - 1] = array[j];
+        array[j] = x;
+    }
+}
+
+/// returns an array of JSON objects for the given data keys
+function GetTitleData(titleDataKey) {
+    log.info("Getting title data for " + titleDataKey);
+
+    var titleData = server.GetTitleData({ Keys : titleDataKey });    
+    var data = titleData[DATA];
+    var actualDataAsString = data[titleDataKey];
+
+    var actualDataAsObject = JSON.parse(actualDataAsString);
+    //log.info("Title data as string: " + actualDataAsString);
+
+    return actualDataAsObject;
+}
+
+function GetMultipleTitleData(arrayKeys) {
+    log.info("Getting array of title data for " + JSON.stringify(arrayKeys));
+
+    var arrayData = {};
+    var titleData = server.GetTitleData({ Keys : arrayKeys });
+    titleData = titleData[DATA];
+
+    // parse all the data into objects so it's easier to use
+    for (var dataKey in titleData) {
+        var data = titleData[dataKey];
+        titleData[dataKey] = JSON.parse(data);
+    }
+    
+    return titleData;
+}
+
+function GetPlayerInventory() {
+    var inventory = server.GetUserInventory({ PlayFabId: currentPlayerId });
+
+    log.info("Getting player inventory: " + JSON.stringify(inventory));
+
+    return inventory;
+}
+
+function GetNumberFromArgs(args, id) {
+    var number = parseInt(args.data[id], 10);
+    return number;
+}
+
+function GetFloatFromArgs(args, id) {
+    var float = parseFloat(args.data[id]);
+    return float;
+}
+
+function GetNumberFromObject(object, key) {
+    var num = parseInt(object[key], 10);
+
+    return num;
+}
+
+handlers.tutorialComplete = function (args) {
+    IncrementGameMetric(TUTORIAL_INTRO);
+}
+
+/////////////////////////////////////////////////
+/// ~Misc
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+/// Cheat Proofing
+/////////////////////////////////////////////////
+
+function GetLoggedInTime() {
+    var time = GetInternalSaveData(LOGGED_IN_TIME);
+    return parseInt(time, 10);
+}
+
+
+/////////////////////////////////////////////////
+/// ~Cheat Proofing
+/////////////////////////////////////////////////
