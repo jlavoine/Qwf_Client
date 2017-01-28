@@ -5,12 +5,13 @@ using System.Collections.Generic;
 namespace Qwf {
     public class Login {
 
-        private IBasicBackend mBackend;
-
+        private string mLoginID;
+        private IBasicBackend mBackend;  
         private IAnalyticsTimer mLoginTimer;
 
-        public Login( IBasicBackend i_backend, IAnalyticsTimer i_loginTimer ) {
+        public Login( IBasicBackend i_backend, IAnalyticsTimer i_loginTimer, string i_loginID ) {
             mBackend = i_backend;
+            mLoginID = i_loginID;
 
             mLoginTimer = i_loginTimer;
             mLoginTimer.Start();
@@ -22,7 +23,8 @@ namespace Qwf {
 
             mLoginTimer.Start();
 
-            mBackend.Authenticate( SystemInfo.deviceUniqueIdentifier );
+            mBackend.Authenticate( mLoginID );
+            //mBackend.Authenticate( SystemInfo.deviceUniqueIdentifier );
             //mBackend.Authenticate( TestUsers.FOUR );
         }
 

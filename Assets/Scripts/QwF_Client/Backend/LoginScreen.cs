@@ -9,6 +9,7 @@ using Newtonsoft.Json;
 
 namespace Qwf {
     public class LoginScreen : MonoBehaviour {
+        public const string STATUS_WAITING_TO_CHOOSE = "Choose player to login";
         public const string STATUS_CONNECTING = "Connecting to server...";
         public const string STATUS_DOWNLOADING_GAME = "Connected to server -- downloading game data!";
         public const string STATUS_DOWNLOADING_PLAYER = "Connected to server -- downloading player data!";
@@ -25,19 +26,32 @@ namespace Qwf {
         private AnalyticsTimer mLoginTimer = new AnalyticsTimer( LibraryAnalyticEvents.LOGIN_TIME, new MyTimer() );
 
         public GameObject PlayButton;
+        public GameObject PlayerSelectionArea;
         public TextMeshProUGUI LoginStatusText;
 
         void Start() {
             mBackend = new QwfBackend();
-            UnityEngine.Debug.LogError( "Is the backend busy: " + mBackend.IsBusy() );
             //BackendManager.Init( mBackend );
 
             MyMessenger.AddListener( BackendMessages.LOGIN_SUCCESS, OnLoginSuccess );
             MyMessenger.AddListener<IBackendFailure>( BackendMessages.BACKEND_REQUEST_FAIL, OnBackendFailure );
 
+            LoginStatusText.text = STATUS_WAITING_TO_CHOOSE;
+        }
+
+        public void OnPlayerSelected_1() {
+            OnPlayerSelected( "Player_1" ); // DF352B70F7C1B528
+        }
+
+        public void OnPlayerSelected_2() {
+            OnPlayerSelected( "Player_2" ); // CDECF881F9EF2304
+        }
+
+        private void OnPlayerSelected(string player) {
+            Destroy( PlayerSelectionArea );
             LoginStatusText.text = STATUS_CONNECTING;
 
-            mLogin = new Login( mBackend, mLoginTimer );
+            mLogin = new Login( mBackend, mLoginTimer, player );
             mLogin.Start();
         }
 
@@ -69,7 +83,7 @@ namespace Qwf {
 
         private IEnumerator LoadDataFromBackend() {
             LoginStatusText.text = STATUS_DOWNLOADING_GAME;
-            UnityEngine.Debug.LogError( "Is the backend busy: " + mBackend.IsBusy() );
+           
             StringTableManager.Init( "English", mBackend );
             //Constants.Init( mBackend );
             //GenericDataLoader.Init( mBackend );
