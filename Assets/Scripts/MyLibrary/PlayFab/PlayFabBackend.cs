@@ -113,7 +113,8 @@ namespace MyLibrary {
             };
 
             PlayFabClientAPI.ExecuteCloudScript( request, ( result ) => {
-                RequestComplete( "Cloud logs for " + i_methodName + "(" + result.ExecutionTimeSeconds + ") call " + ": " + result.Logs, LogTypes.Info );
+                RequestComplete( "Cloud logs for " + i_methodName + "(" + result.ExecutionTimeSeconds + ")", LogTypes.Info );
+                OutputResultLogs( result.Logs );                
 
                 Dictionary<string, string> resultsDeserialized = new Dictionary<string, string>();
                 if ( result.FunctionResult != null ) {
@@ -127,6 +128,12 @@ namespace MyLibrary {
                     i_requestSuccessCallback( resultsDeserialized );
                 }
             }, ( error ) => { HandleError( error, i_methodName ); } );
+        }
+
+        private void OutputResultLogs( List<LogStatement> i_logs ) {
+            foreach ( LogStatement log in i_logs ) {
+                MyMessenger.Send<LogTypes, string, string>( MyLogger.LOG_EVENT, LogTypes.Info, "Log type: " + log.Level + "\n" + log.Message, PLAYFAB );
+            }
         }
 
         public IEnumerator WaitForCloudCall( string i_methodName, Dictionary<string, string> i_params, Callback<Dictionary<string, string>> i_requestSuccessCallback ) {

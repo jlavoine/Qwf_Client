@@ -245,6 +245,7 @@ function GetGameMetric(metricName) {
 /////////////////////////////////////////////////
 
 handlers.onLogin = function (args) {
+    log.info("onLogin()");
     //AddMissingPlayerData(); 
     //SetLoggedInTime();
 }
